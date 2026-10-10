@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if command -v codex >/dev/null 2>&1; then
+  codex --version
+else
+apt-get update
+apt-get install -y curl
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+
+source "$HOME/.nvm/nvm.sh"
+
+nvm install 22
+npm -v
+
+npm install -g @openai/codex@{{ version }}
+fi
+
+mkdir -p "$HOME/.codex"
+
+{% if config_toml_body %}
+cat <<EOF >"$HOME/.codex/config.toml"
+{{ config_toml_body }}
+EOF
+{% endif %}
+
+{% if auth_json_body %}
+cat <<EOF >"$HOME/.codex/auth.json"
+{{ auth_json_body }}
+EOF
+{% endif %}

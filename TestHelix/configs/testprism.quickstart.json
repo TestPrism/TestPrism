@@ -1,0 +1,28 @@
+{
+  "model": {
+    "provider": "openai-responses",
+    "name": "${TESTHELIX_MODEL}",
+    "baseURL": "${TESTHELIX_BASE_URL}",
+    "apiKeyEnv": "TESTHELIX_API_KEY",
+    "providerOptions": {"openai": {"reasoningEffort": "medium"}},
+    "maxOutputTokens": 8192,
+    "timeoutMs": 180000,
+    "reviewMaxOutputTokens": 2048,
+    "outputTokenField": "max_completion_tokens"
+  },
+  "budget": {"maxCalls": 32, "maxInputTokens": 250000, "maxOutputTokens": 64000, "wallMs": 900000, "concurrency": 1},
+  "search": {
+    "skills": ["artifact-workflow", "framework-tests", "observable-oracles", "failure-triage"],
+    "initialCandidates": 1,
+    "maxCandidates": 2,
+    "maxRounds": 2,
+    "agentSteps": 12,
+    "repairSteps": 5,
+    "review": true,
+    "allowProvisional": true,
+    "provisionalPolicy": "reviewed-positive"
+  },
+  "context": {"maxTokens": 18000, "toolOutputChars": 10000, "tokenizer": "o200k_base", "compactTarget": 0.7},
+  "execution": {"timeoutMs": 120000, "testTimeoutMs": 180000, "repeat": 2, "concurrency": 1, "readConcurrency": 4, "network": "none", "maxArtifactBytes": 4000000},
+  "scheduler": {"enabled": false, "apiConcurrency": 1, "taskConcurrency": 1, "patchConcurrency": 1}
+}

@@ -1,0 +1,5 @@
+For contracts about protocols or client/server state, choose a boundary that observes externally visible messages while leaving the operation under test real. A mock returning the expected answer cannot validate that the protocol is performed.
+
+Use a local listener bound to loopback and port 0 when real I/O matters. Wait for readiness, use finite accept/read/join timeouts, cap requests and bytes, propagate worker exceptions to the main test, and close sockets/processes in finally or context managers. Never require public internet access or a fixed host port. Reconstruct only the protocol surface justified by the public contract; avoid making an elaborate fake server the subject of the test.
+
+Observe ordering, request bytes, response status or lifecycle transitions at the public boundary. Keep setup traffic separate from the measured action, and include a supported control through the same fixture to distinguish an invalid server fixture from a regression. Any captured credentials must be synthetic local fixture values.

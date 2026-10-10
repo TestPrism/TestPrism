@@ -1,0 +1,12 @@
+{
+  "configFile": "smoke.json",
+  "taskFiles": [
+    "../examples/prime/task.json"
+  ],
+  "maxTasks": 1,
+  "maxCalls": 16,
+  "maxInputTokens": 120000,
+  "maxOutputTokens": 20000,
+  "wallMs": 180000,
+  "concurrency": 2
+}

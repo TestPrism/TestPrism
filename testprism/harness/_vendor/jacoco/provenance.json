@@ -1,0 +1,11 @@
+{
+  "manifest": "manifest.json",
+  "retrieved_from": "Maven Central",
+  "repository": "https://repo1.maven.org/maven2/",
+  "coordinates": [
+    "org.jacoco:org.jacoco.agent:0.8.15:runtime",
+    "org.jacoco:org.jacoco.cli:0.8.15:nodeps"
+  ],
+  "integrity": "SHA-256 values are recorded in manifest.json and SHA256SUMS and are checked before Java setup and collection.",
+  "license": "EPL-2.0; bundled dependency notices are retained in NOTICE.txt and in each JaCoCo jar's about.html."
+}

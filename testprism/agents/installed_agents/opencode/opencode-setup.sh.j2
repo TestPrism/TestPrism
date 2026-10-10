@@ -1,0 +1,40 @@
+#!/bin/bash
+
+if command -v opencode >/dev/null 2>&1; then
+  echo "Using preinstalled OpenCode runtime"
+  opencode --version
+else
+apt-get update
+apt-get install -y curl
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+
+source "$HOME/.nvm/nvm.sh"
+
+nvm install 22
+npm -v
+
+npm i -g opencode-ai@{{ version }}
+fi
+
+{% if use_cloudgpt == "1" %}
+mkdir -p "$HOME/.config/opencode"
+cat <<EOF >"$HOME/.config/opencode/opencode.json"
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "cloudgpt": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "CloudGPT",
+      "options": {
+        "baseURL": "${CLOUDGPT_BASE_URL}",
+        "apiKey": "${CLOUDGPT_API_KEY}"
+      },
+      "models": {
+        "${CLOUDGPT_DEPLOYMENT}": {}
+      }
+    }
+  }
+}
+EOF
+{% endif %}

@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Please cite the accompanying anonymous paper. Full author metadata will be added after the review period."
+title: "TestPrism: Rethinking Test Evaluation Beyond a Single Reference"
+type: software
+version: 0.1.0
+date-released: 2026-10-10
+license: Apache-2.0
+url: "https://testprism.github.io/"
+repository-code: "https://github.com/TestPrism/TestPrism"
+authors:
+  - name: "Anonymous Authors"

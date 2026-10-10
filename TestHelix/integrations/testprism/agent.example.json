@@ -1,0 +1,10 @@
+{
+  "agent_import_path": "integrations.testprism.agent:TestHelixAgent",
+  "agent_kwargs": {
+    "project_root": "/absolute/path/to/TestHelix",
+    "config": "/absolute/path/to/TestHelix/configs/testprism.quickstart.json",
+    "node": "node",
+    "model_name": "gpt-5.4",
+    "benchmark_root": "/absolute/path/to/TestPrism"
+  }
+}

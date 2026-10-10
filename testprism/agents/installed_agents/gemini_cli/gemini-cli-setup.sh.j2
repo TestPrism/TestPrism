@@ -1,0 +1,18 @@
+#!/bin/bash
+
+if command -v gemini >/dev/null 2>&1; then
+  echo "Using preinstalled Gemini CLI runtime"
+  gemini --version
+else
+apt-get update
+apt-get install -y curl
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+
+source "$HOME/.nvm/nvm.sh"
+
+nvm install 22
+npm -v
+
+npm install -g @google/gemini-cli@{{ version }}
+fi

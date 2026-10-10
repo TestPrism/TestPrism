@@ -1,0 +1,1 @@
+Gold tests are copied only into validation and gold runtimes.

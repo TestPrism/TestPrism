@@ -1,0 +1,6 @@
+{
+  "model": {"name": "${TESTHELIX_MODEL}", "baseURL": "${TESTHELIX_BASE_URL}", "apiKeyEnv": "TESTHELIX_API_KEY", "maxOutputTokens": 4096, "timeoutMs": 60000},
+  "budget": {"maxCalls": 16, "maxInputTokens": 120000, "maxOutputTokens": 20000, "wallMs": 180000, "concurrency": 2},
+  "search": {"initialCandidates": 2, "maxCandidates": 2, "maxRounds": 1, "agentSteps": 4, "review": true, "provisionalPolicy": "reviewed-baseline"},
+  "execution": {"timeoutMs": 10000, "testTimeoutMs": 10000, "repeat": 2, "network": "none"}
+}

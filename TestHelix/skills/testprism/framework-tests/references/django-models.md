@@ -1,0 +1,7 @@
+Use the installed Django runner to manage schema and cleanup. Importing a model or setting Meta.app_label does not install its application.
+
+When reusing public test models, inspect their AppConfig, parent models and the nearby runner first. Pass the actual app module names in prepare_test_harness.projectApps and any public test import directory in modulePaths. Include applications containing concrete inherited parents and referenced models; a child table alone cannot support multi-table inheritance. DiscoverRunner creates tables for registered unmigrated apps and runs configured migrations. Do not maintain a partial schema_editor.create_model list unless the public behavior specifically requires manual schema operations.
+
+For independent fixtures, define models in agent-tests/evo_harness_app/models.py and import them from there. Use django.test.TestCase for database cases. The default harness uses isolated in-memory SQLite; backend-specific requirements need an appropriate existing project setup. The generic control only verifies preparation. Write cases/test_*.py derived from the public contract and confirm the real cases execute.
+
+When the first error is a missing table, inspect the registered apps and model inheritance before changing the regression assertion. Prefer the smallest complete public model setup. Avoid importing unrelated test apps with optional dependencies merely to make one model available.

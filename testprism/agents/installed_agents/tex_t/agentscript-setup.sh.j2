@@ -1,0 +1,582 @@
+﻿#!/bin/bash
+
+set -euo pipefail
+set -x
+
+mkdir -p /agent-logs
+exec > >(tee -a /agent-logs/agentscript-install.log) 2>&1
+
+run_with_privilege() {
+  if command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    "$@"
+  fi
+}
+
+PROXY_URL="${AGENTSCRIPT_PROXY:-}"
+if [[ "$PROXY_URL" == http://127.0.0.1:* || "$PROXY_URL" == https://127.0.0.1:* ]]; then
+  PROXY_URL="${PROXY_URL/127.0.0.1/host.docker.internal}"
+fi
+
+set_proxy() {
+  local proxy_url="$1"
+  export http_proxy="$proxy_url"
+  export https_proxy="$proxy_url"
+  export HTTP_PROXY="$proxy_url"
+  export HTTPS_PROXY="$proxy_url"
+  export ALL_PROXY="$proxy_url"
+  if command -v npm >/dev/null 2>&1; then
+    npm config set proxy "$proxy_url"
+    npm config set https-proxy "$proxy_url"
+  fi
+}
+
+unset_proxy() {
+  unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+  if command -v npm >/dev/null 2>&1; then
+    npm config delete proxy || true
+    npm config delete https-proxy || true
+  fi
+}
+
+install_node_if_needed() {
+  export DEBIAN_FRONTEND=noninteractive
+  local node_major=0
+
+  if command -v node >/dev/null 2>&1; then
+    node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+  fi
+
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 && [ "$node_major" -ge 18 ]; then
+    echo "node/npm already installed with Node >= 18, skipping install"
+    return 0
+  fi
+
+  echo "Installing Node.js 20.x (current major: ${node_major})"
+  run_with_privilege apt-get update -o Acquire::Retries=3
+  run_with_privilege apt-get install -y --no-install-recommends ca-certificates curl gnupg
+  curl -fsSL https://deb.nodesource.com/setup_20.x | run_with_privilege bash -
+  run_with_privilege apt-get install -y --no-install-recommends nodejs
+}
+
+if [[ -n "$PROXY_URL" ]]; then
+  echo "Trying install with proxy: $PROXY_URL"
+  set_proxy "$PROXY_URL"
+  if ! install_node_if_needed; then
+    echo "Proxy install failed, fallback to direct network"
+    unset_proxy
+    install_node_if_needed
+  fi
+else
+  install_node_if_needed
+fi
+
+node -v
+npm -v
+
+mkdir -p "$HOME/.agentscript"
+
+cat <<'EOF' >"$HOME/.agentscript/package.json"
+{
+  "name": "agentscript-runner",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ai": "^4.3.16",
+    "zod": "^3.24.4",
+    "@ai-sdk/openai": "^1.3.24",
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google": "^1.2.22"
+  }
+}
+EOF
+
+cat <<'EOF' >"$HOME/.agentscript/runner.mjs"
+import { generateText, tool } from 'ai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { z } from 'zod';
+
+function parseInstruction(argv) {
+  const b64Index = argv.indexOf('--instruction-b64');
+  if (b64Index !== -1 && b64Index + 1 < argv.length) {
+    try {
+      return Buffer.from(argv[b64Index + 1], 'base64').toString('utf8').trim();
+    } catch (_error) {
+      throw new Error('Invalid base64 instruction payload');
+    }
+  }
+  return argv.join(' ').trim();
+}
+
+const instruction = parseInstruction(process.argv.slice(2));
+const provider = (process.env.AGENTSCRIPT_PROVIDER || 'deepseek').toLowerCase();
+
+if (!instruction) {
+  console.error('Missing instruction');
+  process.exit(1);
+}
+
+function defaultModelFor(providerName) {
+  switch (providerName) {
+    case 'openai':
+      return 'gpt-4o-mini';
+    case 'anthropic':
+      return 'claude-3-5-haiku-latest';
+    case 'google':
+    case 'gemini':
+      return 'gemini-2.0-flash';
+    case 'xai':
+      return 'grok-2-latest';
+    case 'groq':
+      return 'llama-3.1-70b-versatile';
+    case 'mistral':
+      return 'mistral-large-latest';
+    case 'openrouter':
+      return 'openai/gpt-4o-mini';
+    case 'deepseek':
+    default:
+      return 'deepseek-chat';
+  }
+}
+
+function getOpenAICompatible(providerName) {
+  const defaults = {
+    deepseek: {
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+    },
+    openai: {
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL,
+    },
+    xai: {
+      apiKey: process.env.XAI_API_KEY,
+      baseURL: 'https://api.x.ai/v1',
+    },
+    groq: {
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+    },
+    mistral: {
+      apiKey: process.env.MISTRAL_API_KEY,
+      baseURL: 'https://api.mistral.ai/v1',
+    },
+    openrouter: {
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: 'https://openrouter.ai/api/v1',
+    },
+  };
+
+  const selected = defaults[providerName];
+  if (!selected?.apiKey) {
+    throw new Error(`Missing API key for provider: ${providerName}`);
+  }
+
+  const client = createOpenAI({
+    apiKey: selected.apiKey,
+    ...(selected.baseURL ? { baseURL: selected.baseURL } : {}),
+  });
+
+  return client(process.env.AGENTSCRIPT_MODEL || defaultModelFor(providerName));
+}
+
+function getAnthropicModel() {
+  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
+  if (!apiKey) {
+    throw new Error('Missing ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN');
+  }
+
+  const client = createAnthropic({
+    apiKey,
+    ...(process.env.ANTHROPIC_BASE_URL
+      ? { baseURL: process.env.ANTHROPIC_BASE_URL }
+      : {}),
+  });
+
+  return client(process.env.AGENTSCRIPT_MODEL || defaultModelFor('anthropic'));
+}
+
+function getGoogleModel() {
+  const apiKey =
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      'Missing GOOGLE_GENERATIVE_AI_API_KEY, GEMINI_API_KEY, or GOOGLE_API_KEY'
+    );
+  }
+
+  const client = createGoogleGenerativeAI({ apiKey });
+  return client(process.env.AGENTSCRIPT_MODEL || defaultModelFor('google'));
+}
+
+function resolveModel() {
+  if (provider === 'anthropic') {
+    return getAnthropicModel();
+  }
+
+  if (provider === 'google' || provider === 'gemini') {
+    return getGoogleModel();
+  }
+
+  return getOpenAICompatible(provider);
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+let lastRunCommandKey = '';
+let lastRunCommandCount = 0;
+const writtenPaths = new Set();
+
+const tools = {
+  readFile: tool({
+    description: 'Read a UTF-8 text file from disk and return its contents.',
+    parameters: z.object({
+      path: z.string().describe('Absolute path to the file'),
+    }),
+    execute: async ({ path }) => {
+      try {
+        return await readFile(path, 'utf-8');
+      } catch (e) {
+        return `ERROR reading ${path}: ${e.message}`;
+      }
+    },
+  }),
+  writeFile: tool({
+    description: 'Write a UTF-8 text file to disk (creates parent directories when needed).',
+    parameters: z.object({
+      path: z.string().describe('Absolute path where the file will be written'),
+      content: z.string().describe('Full UTF-8 content to write to the file'),
+    }),
+    execute: async ({ path, content }) => {
+      try {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, content, 'utf-8');
+        writtenPaths.add(path);
+        return `OK: wrote ${content.length} bytes to ${path}`;
+      } catch (e) {
+        return `ERROR writing ${path}: ${e.message}`;
+      }
+    },
+  }),
+  readDir: tool({
+    description: 'List file and folder names in a directory.',
+    parameters: z.object({
+      path: z.string().describe('Absolute path to the directory'),
+    }),
+    execute: async ({ path }) => {
+      try {
+        const entries = await readdir(path);
+        return entries.join('\n');
+      } catch (e) {
+        return `ERROR listing ${path}: ${e.message}`;
+      }
+    },
+  }),
+  runCommand: tool({
+    description:
+      'Run a shell command. Prefer command + args (e.g. command="gradle", args=["test"]). ' +
+      'If args is empty, a command string with spaces runs via shell (e.g. "ls -la /app").',
+    parameters: z.object({
+      command: z.string().describe('Executable name, or full shell command when args is empty'),
+      args: z
+        .array(z.string())
+        .describe('Command arguments; use [] for a shell one-liner in command'),
+      cwd: z
+        .string()
+        .describe('Working directory; use "/app" when running from the project root'),
+    }),
+    execute: async ({ command, args, cwd }) => {
+      const argv = Array.isArray(args) ? args : [];
+      const workdir = cwd && cwd.trim() ? cwd : '/app';
+      const useShell = argv.length === 0 && /\s/.test(command);
+      const cmdKey = useShell ? command : `${command} ${argv.join(' ')}`.trim();
+
+      if (cmdKey === lastRunCommandKey) {
+        lastRunCommandCount += 1;
+      } else {
+        lastRunCommandKey = cmdKey;
+        lastRunCommandCount = 1;
+      }
+
+      if (lastRunCommandCount > 2) {
+        return [
+          'exit_code: 1',
+          'stdout:',
+          `stderr:\nERROR: Command repeated ${lastRunCommandCount} times without progress. ` +
+            'Do not retry the same command. For Java bug-fix tasks, call writeFile on the ' +
+            '.java source under /app. For builds use command="gradle" with args ' +
+            '["test", ...] and cwd="/tests" when a Gradle project exists there.',
+        ].join('\n');
+      }
+
+      const res = spawnSync(command, useShell ? [] : argv, {
+        cwd: workdir,
+        encoding: 'utf-8',
+        maxBuffer: 5 * 1024 * 1024,
+        timeout: 120_000,
+        shell: useShell,
+      });
+      return [
+        `exit_code: ${res.status ?? 1}`,
+        `stdout:\n${(res.stdout || '').slice(0, 4000)}`,
+        `stderr:\n${(res.stderr || '').slice(0, 2000)}`,
+      ].join('\n');
+    },
+  }),
+};
+
+// ---------------------------------------------------------------------------
+// System prompt
+// ---------------------------------------------------------------------------
+const SYSTEM_PROMPT = `\
+You are an autonomous coding agent running inside a Docker container.
+Working directory: /app  (all project source files live here)
+
+═══════════════════════════════════════════════════════
+MANDATORY RULES — you must follow ALL of these:
+═══════════════════════════════════════════════════════
+1. Always start by calling readDir('/app') to explore the project.
+2. Call readFile for every source file you need to read before analysing it.
+3. You MUST call writeFile to save every deliverable to disk — NEVER just describe edits in text.
+4. If the user instruction names a source file to fix (e.g. HANOI.java), you MUST writeFile
+   that file with the corrected full content before doing anything else optional.
+5. After writeFile, call runCommand at most once or twice to verify — never repeat a failed command.
+6. Use only absolute paths (e.g. /app/HANOI.java, /agent-tests/test_agent.py).
+7. Your final text reply must be a short one-line confirmation only.
+
+═══════════════════════════════════════════════════════
+TASK TYPE DETECTION — identify the task type first:
+═══════════════════════════════════════════════════════
+Read the user instruction and list /app to classify:
+
+• Instruction mentions "buggy", "fix", "exactly one line", "one-line change",
+  or "defect corrected" → BUG-FIX task (QuixBugs / minimal patch) — highest priority
+• If /app contains setup.py or pyproject.toml → INSTALLED PACKAGE task (swe-bench style)
+• If the task asks to write solution.py / ars.R / solver.py → IMPLEMENTATION task
+• If /app contains *.java files → JAVA task (may overlap with BUG-FIX)
+• If /app contains *.go or go.mod → GO task
+• If /app contains CMakeLists.txt or *.cpp / *.hpp / makefile → C++ task
+• If task mentions "flag", "HTB{", "answer.txt" → CTF task
+• If task mentions R, "ars.R", "dnorm", "Rscript" → R task
+
+═══════════════════════════════════════════════════════
+BUG-FIX / ONE-LINE CHANGE (QuixBugs) — CRITICAL:
+═══════════════════════════════════════════════════════
+When the instruction requires fixing existing source with exactly one line changed:
+
+1. readFile the named source file under /app (e.g. /app/HANOI.java).
+2. Identify the single buggy line; change ONLY that line in the full file content.
+3. writeFile the ENTIRE corrected file back to the same path — this is mandatory.
+4. Do NOT add comments or reformat other lines.
+5. Optional agent-tests/ work comes ONLY after step 3 succeeds.
+6. Do NOT run bare "javac Foo.java" on package java_programs.* sources in /app.
+   If you need to verify Java, use Gradle/Maven from the project root or /tests:
+     runCommand: command="gradle", args=["test", "--tests", "java_testcases.junit.HANOI_TEST"],
+                 cwd="/tests"
+   (only when /tests/build.gradle exists; otherwise skip compile verification.)
+
+═══════════════════════════════════════════════════════
+runCommand — how to invoke correctly:
+═══════════════════════════════════════════════════════
+• Always pass args (use [] if none) and cwd (use "/app" or "/tests").
+• Preferred: command="gradle", args=["test", "-q"], cwd="/tests"
+• Shell one-liner: command="ls -la /app", args=[], cwd="/app"
+• WRONG: command="javac HANOI.java" with args=[] on a packaged class — use writeFile instead.
+• Never call the same failing command more than twice; switch strategy (writeFile).
+
+═══════════════════════════════════════════════════════
+PYTHON TEST WRITING — import placement rules (CRITICAL):
+═══════════════════════════════════════════════════════
+CASE A — IMPLEMENTATION task (solution.py / solver.py does NOT exist yet in pre-fix):
+  → ALWAYS put module imports INSIDE each test function, never at top level.
+  → This ensures pytest can collect tests even before the file is created.
+  ✓ Correct:
+      def test_foo():
+          from solution import my_func      # import INSIDE function
+          assert my_func(1) == 2
+  ✗ Wrong (breaks pre-fix collection):
+      from solution import my_func          # top-level import — FORBIDDEN for this case
+      def test_foo():
+          assert my_func(1) == 2
+
+CASE B — INSTALLED PACKAGE task (package already installed, e.g. astropy, oauthlib):
+  → Top-level imports ARE safe because the package exists at collection time.
+  → The bug is inside the installed code; pre-fix collection still works.
+  ✓ Correct:
+      import astropy
+      from astropy.io.ascii import ecsv
+      def test_datetime64():
+          ...
+
+═══════════════════════════════════════════════════════
+JAVA TASK:
+═══════════════════════════════════════════════════════
+BUG-FIX (instruction names a .java file to patch):
+  → writeFile the fixed source under /app first (see BUG-FIX section above).
+  → Do not substitute agent-tests for fixing the source file.
+
+Writing optional agent-tests (only after source is fixed):
+  → Use subprocess with gradle/mvn when build files exist under /app or /tests.
+  → Do not use bare javac on single files that declare package java_programs.
+  → Pattern:
+    import subprocess, pytest
+    def test_java_logic():
+        result = subprocess.run(
+            ['gradle', 'test', '--tests', 'java_testcases.junit.HANOI_TEST', '-q'],
+            cwd='/tests', capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
+
+═══════════════════════════════════════════════════════
+GO TASK — writing tests:
+═══════════════════════════════════════════════════════
+- Use subprocess to build or run the Go program.
+    import subprocess
+    def test_go_output():
+        result = subprocess.run(['go', 'run', '/app/beer_song.go'],
+                                capture_output=True, text=True, cwd='/app')
+        assert 'bottles of beer' in result.stdout
+
+═══════════════════════════════════════════════════════
+C++ TASK — writing tests:
+═══════════════════════════════════════════════════════
+- Use subprocess to invoke make (or cmake) and then run the binary.
+    import subprocess
+    def test_cpp_build_and_run():
+        build = subprocess.run(['make'], cwd='/app', capture_output=True, text=True)
+        assert build.returncode == 0, build.stderr
+        run = subprocess.run(['/app/area_calculation', 'input.txt', 'out.txt'],
+                             capture_output=True, text=True)
+        assert run.returncode == 0
+
+═══════════════════════════════════════════════════════
+R TASK — writing tests:
+═══════════════════════════════════════════════════════
+- Use subprocess to run the R script with Rscript.
+    import subprocess
+    def test_r_ars():
+        result = subprocess.run(
+            ['Rscript', '-e', 'source("/app/ars.R"); samples <- ars(dnorm, 100); stopifnot(length(samples)==100)'],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
+
+═══════════════════════════════════════════════════════
+CTF TASK — writing tests:
+═══════════════════════════════════════════════════════
+- First solve the challenge: read /app/main.py, interact with the target service.
+- Write the discovered flag to /app/answer.txt.
+- Test must verify the flag format and that /app/answer.txt exists.
+    import os, re
+    def test_flag_found():
+        assert os.path.exists('/app/answer.txt')
+        flag = open('/app/answer.txt').read().strip()
+        assert re.match(r'HTB\\{.+\\}', flag), f'Invalid flag: {flag}'
+
+═══════════════════════════════════════════════════════
+IMPLEMENTATION / FILE-OUTPUT TASK (terminal-bench style):
+═══════════════════════════════════════════════════════
+- Implement the requested functionality and write output files to the specified paths.
+- Tests should verify the output files exist and have the correct content/format.
+    import os, json
+    def test_output_file():
+        assert os.path.exists('/app/converted_models/model.json')
+        data = json.load(open('/app/converted_models/model.json'))
+        assert 'vertices' in data
+
+═══════════════════════════════════════════════════════
+WORKFLOW:
+═══════════════════════════════════════════════════════
+  Step 1 → readDir('/app')
+  Step 2 → readFile each source file named in the user instruction
+  Step 3 → writeFile deliverables (bug fix / implementation / output files)
+           For BUG-FIX: this step is mandatory; do not skip to agent-tests.
+  Step 4 → (optional) writeFile under /agent-tests/ only if instruction requires it
+  Step 5 → runCommand once to verify (gradle test, ls, etc.) — stop if it fails twice
+  Step 6 → one-line summary reply
+`;
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const model = resolveModel();
+  let effectiveSystemPrompt = SYSTEM_PROMPT;
+  const customSystemPromptPath = process.env.TESTPRISM_SYSTEM_PROMPT_PATH;
+  if (customSystemPromptPath) {
+    const customSystemPrompt = (await readFile(customSystemPromptPath, 'utf-8')).trim();
+    effectiveSystemPrompt = process.env.TESTPRISM_SYSTEM_PROMPT_MODE === 'append'
+      ? `${SYSTEM_PROMPT}\n\n${customSystemPrompt}`
+      : customSystemPrompt;
+  }
+  console.log('[runner] provider=' + provider + ' model=' + (process.env.AGENTSCRIPT_MODEL || '(default)'));
+  console.log('[runner] instruction bytes=' + instruction.length);
+  try {
+    const result = await generateText({
+      model,
+      system: effectiveSystemPrompt,
+      prompt: instruction,
+      tools,
+      maxSteps: 40,
+    });
+    const needsSourceFix =
+      /buggy|exactly one.*line|one-?line change|defect corrected|fix the bug/i.test(
+        instruction
+      );
+    const wroteAppSource = [...writtenPaths].some(
+      (p) => p.startsWith('/app/') && !p.startsWith('/app/agent-tests/')
+    );
+    if (needsSourceFix && !wroteAppSource) {
+      console.error(
+        '[runner] WARNING: Bug-fix task finished without writeFile on any /app source file'
+      );
+    }
+    // Persist full step trajectory for inspection in /agent-logs
+    const trajPath = process.env.AGENTSCRIPT_TRAJECTORY_PATH;
+    if (trajPath) {
+      try {
+        await writeFile(trajPath, JSON.stringify({
+          steps: result.steps ?? [],
+          finalText: result.text ?? '',
+          usage: result.usage ?? null,
+          finishReason: result.finishReason ?? null,
+        }, null, 2), 'utf-8');
+      } catch (_err) {
+        console.error('[runner] failed to write trajectory:', _err.message);
+      }
+    }
+    const steps = Array.isArray(result.steps) ? result.steps.length : 0;
+    console.log('[runner] finished: steps=' + steps + ' finishReason=' + (result.finishReason ?? 'none') + ' usage=' + JSON.stringify(result.usage ?? {}));
+    if (result.text) {
+      console.log(result.text);
+    } else {
+      console.log('[runner] (no final text; agent completed via tool calls only)');
+    }
+  } catch (error) {
+    console.error('[runner error]', String(error?.message || error));
+    if (error?.stack) console.error(error.stack);
+    process.exit(1);
+  }
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});
+EOF
+
+npm install --prefix "$HOME/.agentscript" \
+  --network-timeout=100000 \
+  --no-audit \
+  --no-fund

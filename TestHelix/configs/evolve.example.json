@@ -1,0 +1,43 @@
+{
+  "baseConfig": "testprism.quickstart.json",
+  "trainManifest": "../data/dev-train/manifest.json",
+  "validationManifest": "../data/dev-validation/manifest.json",
+  "holdoutManifest": "../TestPrism-main/verified_tasks/test-hardest-500/manifest.json",
+  "benchmark": {
+    "root": "../TestPrism-main",
+    "dataset": "../data/development-tasks",
+    "patchSets": "../data/frozen-development-patches",
+    "python": "../.runs/testprism-venv/bin/python",
+    "runtimeCopy": "../.runs/testprism-runtime"
+  },
+  "seed": "testhelix-evolve-v2",
+  "population": 3,
+  "generations": 1,
+  "offspring": 3,
+  "reflection": "model",
+  "scheduler": "ucb",
+  "mutation": {
+    "components": ["guidance", "lessons", "skillRoutes", "agentSteps", "contextTokens", "toolOutputChars", "reviewMaxOutputTokens"],
+    "lessonComponents": ["preparation", "generation", "repair", "review"],
+    "evidenceGuided": true,
+    "lessonReplay": "filter"
+  },
+  "budget": {
+    "maxCalls": 4000,
+    "maxInputTokens": 40000000,
+    "maxOutputTokens": 8000000,
+    "wallMs": 21600000,
+    "maxEvaluations": 14
+  },
+  "promotion": {
+    "repeats": 2,
+    "minTasks": 20,
+    "minGain": 0,
+    "maxSourceRegression": 0,
+    "confidence": 0.95
+  },
+  "screening": {
+    "enabled": true,
+    "tasks": 8
+  }
+}

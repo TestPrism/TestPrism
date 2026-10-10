@@ -1,0 +1,5 @@
+{
+  "id": "practice/prime", "source": "practice",
+  "instruction": "Fix isPrime(n) in prime.cjs to return whether the nonnegative integer n is prime. In particular, 1 is not prime. Preserve its CommonJS export and mathematical behavior across small inputs.",
+  "runtime": {"kind": "local", "root": "project"}, "testTimeoutMs": 3000
+}

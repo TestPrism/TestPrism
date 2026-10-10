@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "procedures": [{
+    "id": "prepare-python",
+    "tool": "prepare_test_harness",
+    "purpose": "Probe the installed runtime, install owned harness files, then verify a generic setup control.",
+    "verification": "setup-control",
+    "recovery": "recheck-owned-files"
+  }]
+}

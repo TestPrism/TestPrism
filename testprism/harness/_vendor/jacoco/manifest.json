@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "project": "JaCoCo",
+  "version": "0.8.15",
+  "license": {
+    "spdx_id": "EPL-2.0",
+    "name": "Eclipse Public License 2.0",
+    "url": "https://www.eclipse.org/legal/epl-2.0/"
+  },
+  "artifacts": [
+    {
+      "id": "agent",
+      "coordinate": "org.jacoco:org.jacoco.agent:0.8.15:runtime",
+      "filename": "org.jacoco.agent-0.8.15-runtime.jar",
+      "source_url": "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/0.8.15/org.jacoco.agent-0.8.15-runtime.jar",
+      "sha256": "fb5b0036a0899ea97edfa0fc2c7985b55f3f7c5695028163e5e60d4f3cf6075d",
+      "license": "EPL-2.0 (JaCoCo); ASM BSD-3-Clause (embedded runtime dependency)"
+    },
+    {
+      "id": "cli",
+      "coordinate": "org.jacoco:org.jacoco.cli:0.8.15:nodeps",
+      "filename": "org.jacoco.cli-0.8.15-nodeps.jar",
+      "source_url": "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.15/org.jacoco.cli-0.8.15-nodeps.jar",
+      "sha256": "d2b74b20b415163c1f53261e7c5ef4445b788327094208ff821e0c2baf9bc8f1",
+      "license": "EPL-2.0 (JaCoCo); args4j MIT, ASM BSD-3-Clause, Google Code Prettify Apache-2.0 (embedded dependencies)"
+    }
+  ],
+  "notes": "The CLI uses the dependency-complete nodeps classifier. The URLs above are the exact Maven Central sources used to obtain these bytes. See LICENSE.txt and NOTICE.txt for the applicable notices."
+}

@@ -1,0 +1,11 @@
+# Resolve runtime setup before changing the oracle
+
+A missing dependency in the first interpreter does not establish that the project environment is absent. Inspect the public runner/configuration and a bounded list of existing managed environments or local virtual environments. Compare the relevant candidates' executable, version, dependency availability and module origin; select the one supported by checkout evidence. Avoid recursive filesystem surveys or creating a new environment before checking an existing one.
+
+Run one small supported operation through that interpreter and the actual checkout. An import specification being discoverable is not a successful import; finding a CLI or passing collection is not an executed control. Preserve the chosen interpreter and required activation in the exported runner: shell activation from an earlier tool call may not survive the next call or a fresh validation environment.
+
+If compatible dependencies are truly absent, derive the minimal setup from the checkout's public metadata. Put necessary reproducible setup in the runner so it also works in fresh environments, and report setup failures distinctly. Reuse installed dependencies when suitable. Install missing dependencies or build/install the current checkout only as required by its supported workflow; never install a released replacement of the project under test, which would bypass the source being evaluated. Verify module origin again after setup.
+
+Keep virtual environments, dependency trees, build outputs and caches outside agent-tests/. Export the runner and small required test inputs; let the runner reproduce necessary setup in a separate location. A working environment in the solver's container is not part of the submitted test bundle.
+
+Keep the original observable contract. For a behavioral regression, an AST/source-text pattern is not a substitute for executing behavior because imports are inconvenient. A newly requested API can legitimately be absent on baseline; missing unrelated dependencies cannot establish that regression. After setup succeeds, keep a small control alongside the task-specific failing assertion, then validate the same runner against the source repair.

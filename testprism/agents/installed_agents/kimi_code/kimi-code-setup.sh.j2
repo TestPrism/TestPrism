@@ -1,0 +1,23 @@
+#!/bin/bash
+
+if command -v kimi >/dev/null 2>&1; then
+  echo "Using preinstalled Kimi Code runtime"
+  kimi --version
+else
+apt-get update
+apt-get install -y curl
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+
+source "$HOME/.nvm/nvm.sh"
+
+nvm install 22
+npm -v
+
+npm install -g @moonshot-ai/kimi-code@{{ version }}
+fi
+
+mkdir -p "/installed-agent/kimi-home"
+cat <<EOF >"/installed-agent/kimi-home/config.toml"
+{{ config_toml_body }}
+EOF

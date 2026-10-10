@@ -1,0 +1,6 @@
+# Minimal host dependencies for scripts/run_native_bridge_diagnostic.py.
+# Install outside TestPrism-main; this is not the full official harness environment.
+docker==7.1.0
+pydantic==2.12.4
+PyYAML==6.0.3
+Jinja2==3.1.6

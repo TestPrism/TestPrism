@@ -1,0 +1,117 @@
+#!/bin/bash
+
+OPENHANDS_VENV="/opt/openhands-venv"
+OPENHANDS_RUNTIME_MARKER="/opt/testprism-openhands-runtime.json"
+{% if git_version %}
+EXPECTED_OPENHANDS_VERSION=""
+EXPECTED_OPENHANDS_GIT_VERSION="{{ git_version }}"
+EXPECTED_OPENHANDS_RUNTIME_KEY="git-{{ git_version | replace('/', '-') | replace(':', '-') | replace('@', '-') }}-orjson-v1"
+{% elif version %}
+EXPECTED_OPENHANDS_VERSION="{{ version }}"
+EXPECTED_OPENHANDS_GIT_VERSION=""
+EXPECTED_OPENHANDS_RUNTIME_KEY="pypi-{{ version | replace('/', '-') | replace(':', '-') | replace('@', '-') }}-orjson-v1"
+{% else %}
+EXPECTED_OPENHANDS_VERSION="0.51.1"
+EXPECTED_OPENHANDS_GIT_VERSION=""
+EXPECTED_OPENHANDS_RUNTIME_KEY="pypi-0.51.1-orjson-v1"
+{% endif %}
+
+if [ -x "$OPENHANDS_VENV/bin/python" ] && [ -f "$OPENHANDS_RUNTIME_MARKER" ]; then
+    if EXPECTED_OPENHANDS_VERSION="$EXPECTED_OPENHANDS_VERSION" \
+       EXPECTED_OPENHANDS_GIT_VERSION="$EXPECTED_OPENHANDS_GIT_VERSION" \
+       EXPECTED_OPENHANDS_RUNTIME_KEY="$EXPECTED_OPENHANDS_RUNTIME_KEY" \
+       "$OPENHANDS_VENV/bin/python" - <<'PY'
+import json
+import os
+from pathlib import Path
+
+marker = Path("/opt/testprism-openhands-runtime.json")
+data = json.loads(marker.read_text())
+assert data.get("version", "") == os.environ["EXPECTED_OPENHANDS_VERSION"]
+assert data.get("git_version", "") == os.environ["EXPECTED_OPENHANDS_GIT_VERSION"]
+runtime_key = os.environ.get("EXPECTED_OPENHANDS_RUNTIME_KEY", "")
+if runtime_key:
+    assert data.get("runtime_key", "") == runtime_key
+import openhands
+import orjson
+PY
+    then
+        echo "Using preinstalled OpenHands runtime from $OPENHANDS_VENV"
+        if ! command -v python >/dev/null 2>&1; then
+            ln -s "$OPENHANDS_VENV/bin/python" /usr/local/bin/python
+        fi
+        return 0 2>/dev/null || exit 0
+    fi
+fi
+
+# Update package manager
+apt-get update
+
+apt-get install -y curl git build-essential python3-pip
+
+# Use domestic package mirrors by default, and allow overriding from env.
+# Verified reachable in this environment:
+# - https://pypi.tuna.tsinghua.edu.cn/simple/
+# - https://mirrors.aliyun.com/pypi/simple/
+PRIMARY_PYPI_MIRROR="${PRIMARY_PYPI_MIRROR:-https://pypi.tuna.tsinghua.edu.cn/simple/}"
+FALLBACK_PYPI_MIRROR="${FALLBACK_PYPI_MIRROR:-https://mirrors.aliyun.com/pypi/simple/}"
+export PIP_INDEX_URL="${PIP_INDEX_URL:-$PRIMARY_PYPI_MIRROR}"
+export UV_INDEX_URL="${UV_INDEX_URL:-$PRIMARY_PYPI_MIRROR}"
+
+uv_pip_install_with_fallback() {
+    if uv pip install --index-url "$UV_INDEX_URL" "$@"; then
+        return 0
+    fi
+    echo "Primary PyPI mirror failed, retrying with fallback: $FALLBACK_PYPI_MIRROR"
+    export PIP_INDEX_URL="$FALLBACK_PYPI_MIRROR"
+    export UV_INDEX_URL="$FALLBACK_PYPI_MIRROR"
+    uv pip install --index-url "$UV_INDEX_URL" "$@"
+}
+
+# Note that we use uv instead of pip because there's a task,
+# broken-python, that intentionally breaks pip.
+if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+    echo "uv installer unreachable, fallback to pip mirror install"
+    python3 -m pip install --no-cache-dir -i "$PIP_INDEX_URL" uv
+fi
+
+# Add uv to PATH for current session
+source "$HOME/.local/bin/env" || true
+
+# Install Python 3.13 using uv
+uv python install 3.13
+
+# Create a dedicated virtual environment for OpenHands
+mkdir -p /opt
+uv venv $OPENHANDS_VENV --python 3.13
+
+# Activate the virtual environment and install OpenHands
+source $OPENHANDS_VENV/bin/activate
+
+# Test runner scripts in the harness invoke "python".
+# Some task images only provide "python3", so ensure a "python" command exists.
+if ! command -v python >/dev/null 2>&1; then
+    ln -s "$OPENHANDS_VENV/bin/python" /usr/local/bin/python
+fi
+
+# Set SKIP_VSCODE_BUILD to true to skip VSCode extension build for OpenHands
+export SKIP_VSCODE_BUILD=true
+
+# Install OpenHands using template variables
+{% if git_version %}
+# Installing from git version: {{ git_version }}
+uv_pip_install_with_fallback git+https://github.com/All-Hands-AI/OpenHands.git@{{ git_version }}
+{% elif version %}
+# Installing from PyPI version: {{ version }}
+uv_pip_install_with_fallback openhands-ai=={{ version }}
+{% else %}
+# Default PyPI pin: openhands-ai 1.x dropped ``python -m openhands.core.main`` (headless
+# CLI used by TestBench). Stay on 0.51.x until the harness targets the V1 entrypoint.
+uv_pip_install_with_fallback openhands-ai==0.51.1
+{% endif %}
+
+# Hack for OpenHands versions prior to 0.51.1
+# Prior to 0.51.1, OpenHands had a dependency on the 'deprecated' package but didn't
+# declare it. It used to be installed as a transitive dependency via other dependencies,
+# but this is no longer the case, so we need to install it explicitly.
+uv_pip_install_with_fallback deprecated orjson

@@ -1,0 +1,68 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.uv-python/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Virtual environments
+.venv/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.local.toml
+.npmrc
+.pypirc
+.netrc
+
+# Local tool state and generated runs
+.cc_swt/
+.agents/
+.codex/
+.runs/
+
+# Internal development material (not part of the anonymous artifact)
+docs/
+legacy/
+/a.txt
+/draft_*.tex
+/testhelix.tex
+/scripts/check_architecture_*.py
+/scripts/create_architecture_*.py
+/scripts/export_architecture_*.py
+/scripts/fetch_architecture_assets.py
+/scripts/prepare_architecture_fonts.py
+/scripts/redraw_architecture.py
+
+# Generated evaluation outputs
+.eval/
+eval_runs/
+evo-test/
+.tmp/
+
+# External clones
+vendor/
+/TestPrism-main/
+/TestPrism/
+
+# Node runtime
+node_modules/
+*.local.json
+*.tsbuildinfo
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store

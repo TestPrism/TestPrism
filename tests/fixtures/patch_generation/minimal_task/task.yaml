@@ -1,0 +1,7 @@
+instruction: Fix add so it returns the arithmetic sum while preserving identity.
+difficulty: easy
+parser_name: pytest
+max_agent_timeout_sec: 10
+max_test_timeout_sec: 10
+workdir: /app
+disable_asciinema: true

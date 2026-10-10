@@ -1,0 +1,51 @@
+{
+  "model": {
+    "name": "${TESTHELIX_MODEL}",
+    "baseURL": "${TESTHELIX_BASE_URL}",
+    "apiKeyEnv": "TESTHELIX_API_KEY",
+    "maxOutputTokens": 8192,
+    "timeoutMs": 120000,
+    "provider": "compatible",
+    "reviewMaxOutputTokens": 2048,
+    "maxRetries": 1,
+    "maxRetryDelayMs": 5000
+  },
+  "budget": {
+    "maxCalls": 48,
+    "maxInputTokens": 500000,
+    "maxOutputTokens": 100000,
+    "wallMs": 900000,
+    "concurrency": 2
+  },
+  "search": {
+    "initialCandidates": 2,
+    "maxCandidates": 4,
+    "maxRounds": 2,
+    "agentSteps": 12,
+    "repairSteps": 5,
+    "minIndependentSupport": 1,
+    "review": true,
+    "allowProvisional": true,
+    "provisionalPolicy": "reviewed-baseline"
+  },
+  "context": {
+    "maxTokens": 18000,
+    "recentTurns": 3,
+    "toolOutputChars": 10000,
+    "tokenizer": "heuristic",
+    "compactTarget": 0.7
+  },
+  "execution": {
+    "timeoutMs": 120000,
+    "testTimeoutMs": 180000,
+    "repeat": 2,
+    "concurrency": 2,
+    "network": "none",
+    "maxArtifactBytes": 4000000,
+    "readConcurrency": 4
+  },
+  "scheduler": {
+    "taskConcurrency": 2,
+    "patchConcurrency": 2
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "procedures": [{
+    "id": "write-and-run",
+    "tool": "write_test_suite",
+    "purpose": "Save the supplied test bundle and observe its execution; passing is not proof of contract coverage.",
+    "verification": "suite-execution",
+    "recovery": "inspect-existing-work"
+  }]
+}

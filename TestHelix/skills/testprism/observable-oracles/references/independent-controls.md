@@ -1,0 +1,5 @@
+Choose the cheapest independent check that addresses the disputed assumption. Useful bases include a documented example, a hand-computable limiting case, or an established public API whose semantics match the required behavior. An older implementation of the buggy operation is not a positive oracle merely because it runs.
+
+For numerical expectations, write down units, coordinate/basis conventions and the meaning of each input and output before computing an answer. Check a simple anchor with a known sign, scale or invariant. Set tolerance from the required accuracy and numerical operations, not the number of printed digits or one candidate's output. A round trip may hide paired errors; retain an independent anchor.
+
+A positive control must exercise the disputed observation or assumption. An unrelated green test, or two repairs copied from the same derivation, provides little independent evidence. When a control disagrees, localize the disagreement before changing the expected result. Correct an expectation only when its public basis was wrong; do not weaken required behavior just to obtain a passing repair.
